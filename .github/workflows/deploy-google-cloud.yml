@@ -1,0 +1,90 @@
+name: Deploy MultiK8s to GKE
+
+on:
+  push:
+    branches:
+      - google-cloud
+
+# Required for Google Cloud Workload Identity Federation (keyless auth)
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  SHA: ${{ github.sha }}
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Test Image
+        run: docker build -t cajina/react-test -f ./client/Dockerfile.dev ./client
+
+      - name: Run Client Tests
+        run: docker run -e CI=true cajina/react-test npm test
+
+  deploy:
+    name: Build & Deploy to GKE
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------------------------
+      # Option 1 (Recommended): Keyless auth via Workload Identity Federation (WIF)
+      # -------------------------------------------------------------------------
+      - name: Authenticate to Google Cloud (Workload Identity)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # -------------------------------------------------------------------------
+      # Option 2 (Fallback if you prefer JSON key secret):
+      # - name: Authenticate to Google Cloud (Service Account Key)
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
+      # -------------------------------------------------------------------------
+
+      - name: Set up Cloud SDK & GKE Credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER }}
+          location: ${{ secrets.GKE_ZONE }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Tag Production Images
+        run: |
+          docker build -t cajina/multi-client:latest -t cajina/multi-client:${{ env.SHA }} -f ./client/Dockerfile ./client
+          docker build -t cajina/multi-server:latest -t cajina/multi-server:${{ env.SHA }} -f ./server/Dockerfile ./server
+          docker build -t cajina/multi-worker:latest -t cajina/multi-worker:${{ env.SHA }} -f ./worker/Dockerfile ./worker
+
+      - name: Push Docker Images
+        run: |
+          docker push cajina/multi-client:latest
+          docker push cajina/multi-server:latest
+          docker push cajina/multi-worker:latest
+          docker push cajina/multi-client:${{ env.SHA }}
+          docker push cajina/multi-server:${{ env.SHA }}
+          docker push cajina/multi-worker:${{ env.SHA }}
+
+      - name: Apply Kubernetes Configurations
+        run: |
+          kubectl apply -f k8s
+
+      - name: Set Images on Deployments with Commit SHA
+        run: |
+          kubectl set image deployments/client-deployment client=cajina/multi-client:${{ env.SHA }}
+          kubectl set image deployments/server-deployment server=cajina/multi-server:${{ env.SHA }}
+          kubectl set image deployments/worker-deployment worker=cajina/multi-worker:${{ env.SHA }}
