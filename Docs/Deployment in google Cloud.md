@@ -82,6 +82,7 @@ gcloud iam workload-identity-pools providers describe "github-provider" \
   --format="value(name)"
 '''
 
+
 ## GitHub Repository Secrets Needed
 
 Add the following under Settings > Secrets and variables > Actions:
@@ -94,3 +95,35 @@ Add the following under Settings > Secrets and variables > Actions:
 | GKE_REGION | Compute region of your cluster (e.g., us-central1-a or us-central1) |
 | DOCKER_USERNAME | Your Docker Hub username | 
 | DOCKER_PASSWORD | Your Docker Hub personal access token or password |   
+
+### Create secrets in kubernetes
+
+Preparing the secret container in the kubernetes cluster:
+
+'''
+gcloud config set project <projectid>
+'''
+
+'''
+gcloud config set compute/region <(e.g., us-central1-a or us-central1)>
+'''
+
+'''
+gcloud container clusters get-credentials {cluster-name}
+'''
+
+Command to create the secret: 'kubectl create secret generic pgpassword --from-literal PGPASSWORD=12345asdf'
+
+## Installing Helm
+
+If you have Helm, you can deploy the ingress controller with the following command (Idempotent):
+
+'''
+helm upgrade --install ingress-nginx ingress-nginx \
+  --repo https://kubernetes.github.io/ingress-nginx \
+  --namespace ingress-nginx --create-namespace
+'''
+
+Check that your Ingress Controller was deployed:
+
+kubectl get service ingress-nginx-controller --namespace=ingress-nginx
