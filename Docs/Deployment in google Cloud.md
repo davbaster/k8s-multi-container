@@ -127,3 +127,38 @@ helm upgrade --install ingress-nginx ingress-nginx \
 Check that your Ingress Controller was deployed:
 
 kubectl get service ingress-nginx-controller --namespace=ingress-nginx
+
+## Installing Cert Manager
+
+we will complete these steps in the GCP Cloud Shell:
+
+1. Add the Jetstack Helm repository
+
+'helm repo add jetstack https://charts.jetstack.io'
+
+2. Update your local Helm chart repository cache:
+
+'helm repo update'
+
+3. Install the cert-manager Helm chart:
+
+'''
+
+helm install \
+  cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.8.0 \
+  --set installCRDs=true
+
+'''
+
+## Certificate troubleshooting
+
+If you have deployed your issuer and certificate manifests to GCP and you are getting No Resources Found when running 'kubectl get certificates', then continue on to the next lecture to create and deploy the Ingress manifest. 
+
+Deploying the updated Ingress should trigger the certificate to be issued.
+
+'''
+kubectl describe certificates
+'''
